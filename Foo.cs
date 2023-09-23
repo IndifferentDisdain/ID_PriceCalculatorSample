@@ -14,54 +14,33 @@ public interface ISalesOrderItem
     decimal SellingPrice { get; set; }
     ProductCategory ProductCategory { get; set; }
     int Quantity { get; set; }
-    public decimal Accept(ICalculator visitor);
 }
 
 public interface ITaxable { }
 
-public class TaxableSalesOrderItem : ISalesOrderItem, ITaxable
+public abstract class SalesOrderItemBase : ISalesOrderItem
 {
-    // TODO: consider a base class for SalesOrderItem?
-    public TaxableSalesOrderItem(decimal sellingPrice, int quantity, ProductCategory productCategory)
+    public SalesOrderItemBase(decimal sellingPrice, int quantity, ProductCategory productCategory)
     {
-        // TODO: validate quantity and sellingPrice > 0
         SellingPrice = sellingPrice;
         Quantity = quantity;
         ProductCategory = productCategory;
     }
-
     public decimal SellingPrice { get; set; }
-
     public ProductCategory ProductCategory { get; set; }
-
-    public int Quantity { get; set; } = 1;
-
-    public decimal Accept(ICalculator calculator)
-    {
-        return calculator.Visit(this);
-    }
+    public int Quantity { get; set; }
 }
 
-public class NonTaxableSalesOrderItem : ISalesOrderItem
+public class TaxableSalesOrderItem : SalesOrderItemBase, ITaxable
+{
+    public TaxableSalesOrderItem(decimal sellingPrice, int quantity, ProductCategory productCategory)
+        : base(sellingPrice, quantity, productCategory) { }
+}
+
+public class NonTaxableSalesOrderItem : SalesOrderItemBase
 {
     public NonTaxableSalesOrderItem(decimal sellingPrice, int quantity, ProductCategory productCategory)
-    {
-        // TODO: validate quantity and sellingPrice > 0
-        SellingPrice = sellingPrice;
-        Quantity = quantity;
-        ProductCategory = productCategory;
-    }
-
-    public decimal SellingPrice { get; set; }
-
-    public ProductCategory ProductCategory { get; set; }
-
-    public int Quantity { get; set; } = 1;
-
-    public decimal Accept(ICalculator calculator)
-    {
-        return calculator.Visit(this);
-    }
+        : base(sellingPrice, quantity, productCategory) { }
 }
 
 public class SalesOrder
@@ -72,13 +51,17 @@ public class SalesOrder
 
     private readonly ICalculator _salesTaxCalculator = new SalesTaxCalculator();
 
+    private readonly ICalculator _discountCalculator = new DiscountCalculator();
+
     public ReadOnlyCollection<ISalesOrderItem> Items => _items.AsReadOnly();
 
     public decimal Subtotal { get; private set; }
 
+    public decimal Discount { get; private set; }
+
     public decimal SalesTax { get; private set; }
 
-    public decimal GrandTotal => Subtotal + SalesTax;
+    public decimal GrandTotal => Subtotal - Discount + SalesTax;
 
     public void AddSalesOrderItem(ISalesOrderItem item)
     {
@@ -86,32 +69,44 @@ public class SalesOrder
             return;
 
         _items.Add(item);
-        Subtotal += item.Accept(_subtotalCalculator);
-        SalesTax += item.Accept(_salesTaxCalculator);
+        Subtotal = _subtotalCalculator.Calculate(_items);
+        Discount = _discountCalculator.Calculate(_items);
+        SalesTax = _salesTaxCalculator.Calculate(_items);
     }
 }
 
 public interface ICalculator // visitor
 {
-    decimal Visit(ISalesOrderItem product);
+    decimal Calculate(IEnumerable<ISalesOrderItem> items);
 }
 
 public class SubtotalCalculator : ICalculator
 {
-    public decimal Visit(ISalesOrderItem orderItem)
+    public decimal Calculate(IEnumerable<ISalesOrderItem> items)
     {
-        return orderItem.SellingPrice * orderItem.Quantity;
+        return items.Sum(x => x.SellingPrice * x.Quantity);
     }
 }
 
 public class SalesTaxCalculator : ICalculator
 {
     private const decimal taxRate = 0.075m; // TODO: inject this
-    public decimal Visit(ISalesOrderItem orderItem)
+    public decimal Calculate(IEnumerable<ISalesOrderItem> items)
     {
-        if (orderItem is not ITaxable)
-            return 0.00m;
+        return Math.Round(items.Where(x => x is ITaxable).Sum(y => y.SellingPrice * taxRate * y.Quantity), 2);
+    }
+}
 
-        return Math.Round(orderItem.SellingPrice * taxRate * orderItem.Quantity, 2);
+/// <summary>
+/// Adds a 10% discount if subtotal is greater than or equal to $99.00
+/// </summary>
+public class DiscountCalculator : ICalculator
+{
+    public decimal Calculate(IEnumerable<ISalesOrderItem> items)
+    {
+        var discountThreshold = 99m;
+        var subtotalCalculator = new SubtotalCalculator();
+        var subtotal = subtotalCalculator.Calculate(items);
+        return subtotal >= discountThreshold ? Math.Round(subtotal * .1m, 2) : 0;
     }
 }

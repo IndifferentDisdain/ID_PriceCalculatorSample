@@ -45,4 +45,29 @@ public class UnitTest1
         Assert.Equal(4.49m, salesOrder.SalesTax);
         Assert.Equal(74.32m, salesOrder.GrandTotal);
     }
+
+    [Fact]
+    public void SalesOrder_10PercentDiscount_IfSubtotalGreaterThan99Dollars()
+    {
+        // Arrange
+        var item = new NonTaxableSalesOrderItem(sellingPrice: 49.50m, quantity: 1, productCategory: ProductCategory.Merchandise);
+
+        var salesOrderWithoutDiscount = new SalesOrder();
+        var salesOrderWithDiscount = new SalesOrder();
+
+        // Act
+        salesOrderWithoutDiscount.AddSalesOrderItem(item);
+        salesOrderWithDiscount.AddSalesOrderItem(item);
+        salesOrderWithDiscount.AddSalesOrderItem(item);
+
+        // Assert
+        Assert.Equal(49.5m, salesOrderWithoutDiscount.Subtotal);
+        Assert.Equal(0m, salesOrderWithoutDiscount.Discount);
+        Assert.Equal(49.5m, salesOrderWithoutDiscount.GrandTotal);
+
+        Assert.Equal(99m, salesOrderWithDiscount.Subtotal);
+        Assert.Equal(9.9m, salesOrderWithDiscount.Discount);
+        Assert.Equal(89.1m, salesOrderWithDiscount.GrandTotal);
+
+    }
 }
